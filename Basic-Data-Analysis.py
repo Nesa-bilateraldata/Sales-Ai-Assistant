@@ -13,32 +13,46 @@ data = [
 # Creating a DataFrame
 df = pd.DataFrame(data, columns=["Invoice_ID", "Invoice_Date", "Salesperson", "Customer", "Item_ID", "Item_Name", "Category", "Quantity", "Unit_Price", "Total_Sales"])
 
-# Convert Salesperson column to lowercase for case-insensitive matching
+# Convert columns to lowercase for case-insensitive matching
 df["Salesperson"] = df["Salesperson"].str.lower()
+df["Item_Name"] = df["Item_Name"].str.lower()
 df["Category"] = df["Category"].str.lower()
 
 def chatbot(query):
     query = query.lower().strip()
-    
-    if "total sales by" in query:
+
+    # Handling queries with two filters (salesperson + item)
+    if "total sales by" in query and "and" in query:
+        parts = query.replace("total sales by ", "").split(" and ")
+        if len(parts) == 2:
+            salesperson, item = parts[0].strip(), parts[1].strip()
+            filtered_df = df[(df["Salesperson"] == salesperson) & (df["Item_Name"] == item)]
+            sales = filtered_df["Total_Sales"].sum()
+            return f"Total sales by {salesperson.title()} for {item.title()}: {sales}" if sales > 0 else f"No sales found for {salesperson.title()} and {item.title()}."
+
+    # Single filter: Total sales by salesperson
+    elif "total sales by" in query:
         salesperson = query.replace("total sales by ", "").strip()
         sales = df[df["Salesperson"] == salesperson]["Total_Sales"].sum()
         return f"Total sales by {salesperson.title()}: {sales}" if sales > 0 else f"No sales data found for {salesperson.title()}."
-    
+
+    # Single filter: Items sold by salesperson
     elif "items sold by" in query:
         salesperson = query.replace("items sold by ", "").strip()
         items = df[df["Salesperson"] == salesperson]["Item_Name"].tolist()
         return f"Items sold by {salesperson.title()}: {', '.join(items)}" if items else f"No items found for {salesperson.title()}."
-    
+
+    # Single filter: Sales for category
     elif "sales for category" in query:
         category = query.replace("sales for category ", "").strip()
         sales = df[df["Category"] == category]["Total_Sales"].sum()
         return f"Total sales for {category.title()}: {sales}" if sales > 0 else f"No sales data found for category {category.title()}."
-    
+
     else:
         return "I didn't understand your query."
 
 # Example usage:
-print(chatbot("Total sales by John Doe"))  # Should return 108000
-print(chatbot("Items sold by Jane Smith"))  # Should return 'Laptop, Printer'
-print(chatbot("Sales for category Electronics"))  # Should return 365000
+print(chatbot("Total sales by John Doe and Chair"))  # Should return 8000
+print(chatbot("Total sales by John Doe and Laptop"))  # Should return 100000
+print(chatbot("Total sales by Jane Smith"))  # Should return 165000
+print(chatbot("Sales for category Furniture"))  # Should return 18000
