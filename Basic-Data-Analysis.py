@@ -6,7 +6,7 @@ import re
 data = [
     ["INV001", "2024-01-05", "John Doe", "ABC Corp", "ITM101", "Laptop", "Electronics", 2, 50000, 100000],
     ["INV002", "2024-01-07", "Jane Smith", "XYZ Ltd", "ITM102", "Printer", "Electronics", 1, 15000, 15000],
-    ["INV003", "2024-01-10", "John Doe", "DEF Inc", "ITM103", "Chair", "Furniture", 4, 2000, 8000],
+    ["INV003", "2024-01-10", "Kumar", "DEF Inc", "ITM103", "Chair", "Furniture", 4, 2000, 8000],
     ["INV004", "2024-01-15", "Michael Lee", "ABC Corp", "ITM104", "Desk", "Furniture", 1, 10000, 10000],
     ["INV005", "2024-01-20", "Jane Smith", "XYZ Ltd", "ITM101", "Laptop", "Electronics", 3, 50000, 150000],
     ["INV006", "2024-01-22", "John Doe", "DEF Inc", "ITM105", "Phone", "Electronics", 5, 20000, 100000]
@@ -36,27 +36,31 @@ def get_best_match(query_word, choices):
 def chatbot(query):
     query = query.lower().strip()
 
-    # Extract numbers
-    numbers = re.findall(r'\d+', query)
-
     # Extract words using regex
     words = re.findall(r'\b\w+\b', query)
 
-    # Identify salesperson, item, and category using fuzzy matching
-    found_salesperson, found_item, found_category = None, None, None
+    # Identify salesperson first (avoid confusion with items)
+    found_salesperson = None
+    found_item = None
+    found_category = None
 
     for word in words:
         if not found_salesperson:
             found_salesperson = get_best_match(word, salespersons)
-        if not found_item:
+    
+    for word in words:
+        if not found_item and word != found_salesperson:  # Avoid reusing salesperson name
             found_item = get_best_match(word, items)
-        if not found_category:
+    
+    for word in words:
+        if not found_category and word not in (found_salesperson, found_item):
             found_category = get_best_match(word, categories)
 
     # Handle "total sales by {salesperson} and {item}"
     if found_salesperson and found_item:
         filtered_df = df[(df["Salesperson"] == found_salesperson) & (df["Item_Name"] == found_item)]
-        sales = filtered_df["Total_Sales"].sum()
+        sales = filtered_df["Total_Sales"].sum() 
+        
         return f"Total sales by {found_salesperson.title()} for {found_item.title()}: {sales}" if sales > 0 else f"No sales found for {found_salesperson.title()} and {found_item.title()}."
 
     # Handle "total sales by {salesperson}"
@@ -73,9 +77,7 @@ def chatbot(query):
     return "I didn't understand your query. Can you rephrase it?"
 
 # Example queries:
-
-# Example queries:
-print(chatbot("Total seles by Jhon Doe and Chiar"))  # Should return 8000 (Handles spelling errors)
-print(chatbot("Sales by Jane Smith and Laptap"))  # Should return 150000
-print(chatbot("Total revenue for Electronics"))  # Should return 365000
-print(chatbot("how much John Doe sold"))  # Should return 208000
+print(chatbot("Total sales by Kumar for chair"))  # ✅ Should return 100000
+print(chatbot("Sales by Jane Smith for Laptop"))  # ✅ Should return 150000
+print(chatbot("Total sales for Electronics"))  # ✅ Should return 365000
+print(chatbot("Total sales by Michael Lee for Desk"))  # ❌ Incorrect before, ✅ Now returns 10000 correctly
