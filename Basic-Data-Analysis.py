@@ -1,4 +1,6 @@
 import pandas as pd
+from rapidfuzz import process, fuzz  # Faster alternative to fuzzywuzzy
+import re
 
 # Sample Sales Data
 data = [
@@ -18,41 +20,62 @@ df["Salesperson"] = df["Salesperson"].str.lower()
 df["Item_Name"] = df["Item_Name"].str.lower()
 df["Category"] = df["Category"].str.lower()
 
+# Lists for fuzzy matching
+salespersons = df["Salesperson"].unique().tolist()
+items = df["Item_Name"].unique().tolist()
+categories = df["Category"].unique().tolist()
+
+def get_best_match(query_word, choices):
+    """Find the closest match for a word using fuzzy matching."""
+    match = process.extractOne(query_word, choices, scorer=fuzz.partial_ratio)
+    if match is None:  # If no match is found
+        return None
+    best_match, score, *_ = match  # Extract values safely
+    return best_match if score > 70 else None  # Apply a confidence threshold
+
 def chatbot(query):
     query = query.lower().strip()
 
-    # Handling queries with two filters (salesperson + item)
-    if "total sales by" in query and "and" in query:
-        parts = query.replace("total sales by ", "").split(" and ")
-        if len(parts) == 2:
-            salesperson, item = parts[0].strip(), parts[1].strip()
-            filtered_df = df[(df["Salesperson"] == salesperson) & (df["Item_Name"] == item)]
-            sales = filtered_df["Total_Sales"].sum()
-            return f"Total sales by {salesperson.title()} for {item.title()}: {sales}" if sales > 0 else f"No sales found for {salesperson.title()} and {item.title()}."
+    # Extract numbers
+    numbers = re.findall(r'\d+', query)
 
-    # Single filter: Total sales by salesperson
-    elif "total sales by" in query:
-        salesperson = query.replace("total sales by ", "").strip()
-        sales = df[df["Salesperson"] == salesperson]["Total_Sales"].sum()
-        return f"Total sales by {salesperson.title()}: {sales}" if sales > 0 else f"No sales data found for {salesperson.title()}."
+    # Extract words using regex
+    words = re.findall(r'\b\w+\b', query)
 
-    # Single filter: Items sold by salesperson
-    elif "items sold by" in query:
-        salesperson = query.replace("items sold by ", "").strip()
-        items = df[df["Salesperson"] == salesperson]["Item_Name"].tolist()
-        return f"Items sold by {salesperson.title()}: {', '.join(items)}" if items else f"No items found for {salesperson.title()}."
+    # Identify salesperson, item, and category using fuzzy matching
+    found_salesperson, found_item, found_category = None, None, None
 
-    # Single filter: Sales for category
-    elif "sales for category" in query:
-        category = query.replace("sales for category ", "").strip()
-        sales = df[df["Category"] == category]["Total_Sales"].sum()
-        return f"Total sales for {category.title()}: {sales}" if sales > 0 else f"No sales data found for category {category.title()}."
+    for word in words:
+        if not found_salesperson:
+            found_salesperson = get_best_match(word, salespersons)
+        if not found_item:
+            found_item = get_best_match(word, items)
+        if not found_category:
+            found_category = get_best_match(word, categories)
 
-    else:
-        return "I didn't understand your query."
+    # Handle "total sales by {salesperson} and {item}"
+    if found_salesperson and found_item:
+        filtered_df = df[(df["Salesperson"] == found_salesperson) & (df["Item_Name"] == found_item)]
+        sales = filtered_df["Total_Sales"].sum()
+        return f"Total sales by {found_salesperson.title()} for {found_item.title()}: {sales}" if sales > 0 else f"No sales found for {found_salesperson.title()} and {found_item.title()}."
 
-# Example usage:
-print(chatbot("Total sales by John Doe and Chair"))  # Should return 8000
-print(chatbot("Total sales by John Doe and Laptop"))  # Should return 100000
-print(chatbot("Total sales by Jane Smith"))  # Should return 165000
-print(chatbot("Sales for category Furniture"))  # Should return 18000
+    # Handle "total sales by {salesperson}"
+    elif found_salesperson:
+        sales = df[df["Salesperson"] == found_salesperson]["Total_Sales"].sum()
+        return f"Total sales by {found_salesperson.title()}: {sales}" if sales > 0 else f"No sales data found for {found_salesperson.title()}."
+
+    # Handle "sales for category {category}"
+    elif found_category:
+        sales = df[df["Category"] == found_category]["Total_Sales"].sum()
+        return f"Total sales for {found_category.title()}: {sales}" if sales > 0 else f"No sales data found for category {found_category.title()}."
+
+    # If no match found
+    return "I didn't understand your query. Can you rephrase it?"
+
+# Example queries:
+
+# Example queries:
+print(chatbot("Total seles by Jhon Doe and Chiar"))  # Should return 8000 (Handles spelling errors)
+print(chatbot("Sales by Jane Smith and Laptap"))  # Should return 150000
+print(chatbot("Total revenue for Electronics"))  # Should return 365000
+print(chatbot("how much John Doe sold"))  # Should return 208000
